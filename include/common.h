@@ -49,3 +49,6 @@ inline const char* ErrorString(VkResult errcode) {
             exit(EXIT_FAILURE);                                          \
         }                                                                \
     }
+
+#define VK_P(s, member, os, indent) \
+    (os << string(indent, ' ') << #member << ": " << s.member << '\n')

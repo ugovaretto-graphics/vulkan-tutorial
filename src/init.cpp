@@ -2,6 +2,8 @@
 #include <GLFW/glfw3native.h>
 #include <vulkan/vulkan.h>
 
+#include <algorithm>
+#include <bitset>
 #include <cassert>
 #include <memory>
 
@@ -145,6 +147,17 @@ VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
     VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
                                                        &surfaceCapabilities));
+#ifdef PRINT_SURFACE_CAPABILITIES
+    cout << "currentExtent: "
+         << "width: " << surfaceCapabilities.currentExtent.width
+         << " height: " << surfaceCapabilities.currentExtent.height << endl;
+    bitset<sizeof(surfaceCapabilities.currentTransform)> bits(
+        surfaceCapabilities.currentTransform);
+    string bs = bits.to_string();
+    reverse(begin(bs), end(bs));
+    cout << "currentTransform: " << bs << endl;
+
+#endif
 #ifdef PRINT_COLOR_FORMAT
     const size_t MAX_SURFACE_FORMATS = 128;
     VkSurfaceFormatKHR surfaceFormats[MAX_SURFACE_FORMATS];
@@ -156,7 +169,6 @@ VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
              << endl;
     }
 #endif
-    // surfaceCapabilities.
     VkSwapchainCreateInfoKHR info = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = surface,
@@ -167,8 +179,9 @@ VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
         .imageArrayLayers = 1,
         .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .queueFamilyIndexCount = 1,
-        .preTransform =
-            VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,  // surfaceCapabilities.currentTransform,
+        .preTransform = surfaceCapabilities.currentTransform,
+        // VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,  //
+        // surfaceCapabilities.currentTransform,
         .compositeAlpha = VkCompositeAlphaFlagBitsKHR(
             surfaceCapabilities.supportedCompositeAlpha),
         .presentMode = VK_PRESENT_MODE_FIFO_KHR};
