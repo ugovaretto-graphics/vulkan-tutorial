@@ -31,11 +31,10 @@ VkPhysicalDevice SelectPhysicalDevice(VkPhysicalDevice* devices,
                                       uint32_t count) {
     assert(devices);
     assert(count);
-    return devices[1];
     VkPhysicalDeviceProperties props;
     for (VkPhysicalDevice* p = devices; p != devices + count; ++p) {
         vkGetPhysicalDeviceProperties(*p, &props);
-        if (props.deviceType = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
             cout << "Selected device " << props.deviceName << endl;
             return *p;
         }
@@ -146,18 +145,32 @@ VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
     VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
                                                        &surfaceCapabilities));
+#ifdef PRINT_COLOR_FORMAT
+    const size_t MAX_SURFACE_FORMATS = 128;
+    VkSurfaceFormatKHR surfaceFormats[MAX_SURFACE_FORMATS];
+    uint32_t count = sizeof(surfaceFormats) / sizeof(surfaceFormats[0]);
+    VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface,
+                                                  &count, surfaceFormats));
+    for (int i = 0; i != count; ++i) {
+        cout << surfaceFormats[i].colorSpace << " " << surfaceFormats[i].format
+             << endl;
+    }
+#endif
+    // surfaceCapabilities.
     VkSwapchainCreateInfoKHR info = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = surface,
         .minImageCount = 2,
-        .imageFormat = VK_FORMAT_R8G8B8A8_UNORM,
+        .imageFormat = VK_FORMAT_B8G8R8A8_UNORM,
         .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
         .imageExtent = {.width = width, .height = height},
         .imageArrayLayers = 1,
         .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .queueFamilyIndexCount = 1,
-        .preTransform =VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR, // surfaceCapabilities.currentTransform,
-        .compositeAlpha = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+        .preTransform =
+            VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,  // surfaceCapabilities.currentTransform,
+        .compositeAlpha = VkCompositeAlphaFlagBitsKHR(
+            surfaceCapabilities.supportedCompositeAlpha),
         .presentMode = VK_PRESENT_MODE_FIFO_KHR};
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     VK_CHECK(vkCreateSwapchainKHR(device, &info, nullptr, &swapchain));
@@ -191,9 +204,8 @@ int main(int argc, char const* argv[]) {
     int width = 0;
     int height = 0;
     glfwGetWindowSize(win, &width, &height);
-    VkSwapchainKHR swapChain =
-        CreateSwapChain(physicalDevice, device, surface, graphicsQueueFamily,
-                        width, height);
+    VkSwapchainKHR swapChain = CreateSwapChain(
+        physicalDevice, device, surface, graphicsQueueFamily, width, height);
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
     }
