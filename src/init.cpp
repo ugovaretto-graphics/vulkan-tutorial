@@ -49,9 +49,8 @@ const char** GetRequiredExtensions(uint32_t* count) {
 }
 
 VkSemaphore CreateSemaphore(VkDevice device) {
-    VkSemaphoreCreateInfo info = {.sType =
-                                      VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-                                    .flags = 0};
+    VkSemaphoreCreateInfo info = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .flags = 0};
     VkSemaphore semaphore = VK_NULL_HANDLE;
     VK_CHECK(vkCreateSemaphore(device, &info, nullptr, &semaphore));
     return semaphore;
@@ -188,7 +187,21 @@ VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
         .presentMode = VK_PRESENT_MODE_FIFO_KHR};
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     VK_CHECK(vkCreateSwapchainKHR(device, &info, nullptr, &swapchain));
+#ifdef PRINT_SWAPCHAIN_INFO
+    uint32_t imageCount = 0;
+    vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
+    cout << "Image count: " << imageCount << endl;
+#endif
     return swapchain;
+}
+
+VkCommandPool CreateCommandPool(VkDevice device, uint32_t familyIndex) {
+    VkCommandPoolCreateInfo info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .queueFamilyIndex = familyIndex};
+    VkCommandPool pool = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateCommandPool(device, &info, nullptr, &pool));
+    return pool;
 }
 
 //==============================================================================
@@ -219,32 +232,85 @@ int main(int argc, char const* argv[]) {
     int width = 0;
     int height = 0;
     glfwGetWindowSize(win, &width, &height);
-    VkSwapchainKHR swapChain = CreateSwapChain(
+    VkSwapchainKHR swapchain = CreateSwapChain(
         physicalDevice, device, surface, graphicsQueueFamily, width, height);
 
+    const size_t MAX_SWAPCHAIN_IMAGES = 8;
+    VkImage images[MAX_SWAPCHAIN_IMAGES];
+    uint32_t imageCount = sizeof(images) / sizeof(images[0]);
+    VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, images));
 
-    VkSemaphore semaphore = CreateSemaphore(device);
+    VkSemaphore acquireSemaphore = CreateSemaphore(device);
+    VkSemaphore releaseSemaphore = CreateSemaphore(device);
 
     VkQueue queue = VK_NULL_HANDLE;
     vkGetDeviceQueue(device, graphicsQueueFamily, 0, &queue);
     assert(queue != VK_NULL_HANDLE);
 
+    VkCommandPool commandPool = CreateCommandPool(device, graphicsQueueFamily);
+
+    VkCommandBufferAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = commandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1};
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer));
+
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
         uint32_t imageIndex = 0;
-        VK_CHECK(vkAcquireNextImageKHR(device, swapChain, ~uint64_t(0), semaphore, VK_NULL_HANDLE, &imageIndex));
+        VK_CHECK(vkAcquireNextImageKHR(device, swapchain, ~uint64_t(0),
+                                       acquireSemaphore, VK_NULL_HANDLE,
+                                       &imageIndex));
+
+        VK_CHECK(vkResetCommandPool(device, commandPool, 0));
+
+        VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
+
+        VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+
+        VkClearColorValue color = {1, 0, 1, 1};
+        VkImageSubresourceRange range = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .levelCount = 1,
+            .layerCount = 1};
+
+        vkCmdClearColorImage(commandBuffer, images[imageIndex],
+                             VK_IMAGE_LAYOUT_GENERAL, &color, 1, &range);
+
+        VK_CHECK(vkEndCommandBuffer(commandBuffer));
+
+        VkPipelineStageFlags submitStageMask =
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+        VkSubmitInfo submitInfo = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &acquireSemaphore,
+        .pWaitDstStageMask = &submitStageMask,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &commandBuffer,
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &releaseSemaphore};
+        
+        VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
 
         VkPresentInfoKHR presentInfo = {
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &releaseSemaphore,
             .swapchainCount = 1,
-            .pSwapchains = &swapChain,
-            .pImageIndices = &imageIndex
-        };
+            .pSwapchains = &swapchain,
+            .pImageIndices = &imageIndex};
 
         VK_CHECK(vkQueuePresentKHR(queue, &presentInfo));
 
+        // VK_CHECK(vkQueueWaitIdle(queue));
         VK_CHECK(vkDeviceWaitIdle(device));
     }
-
+    glfwDestroyWindow(win);
+    vkDestroyInstance(instance, nullptr);
     return 0;
 }
