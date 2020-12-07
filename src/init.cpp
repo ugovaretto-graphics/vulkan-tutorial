@@ -50,7 +50,8 @@ const char** GetRequiredExtensions(uint32_t* count) {
 
 VkSemaphore CreateSemaphore(VkDevice device) {
     VkSemaphoreCreateInfo info = {.sType =
-                                      VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+                                      VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+                                    .flags = 0};
     VkSemaphore semaphore = VK_NULL_HANDLE;
     VK_CHECK(vkCreateSemaphore(device, &info, nullptr, &semaphore));
     return semaphore;
@@ -189,6 +190,7 @@ VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
     VK_CHECK(vkCreateSwapchainKHR(device, &info, nullptr, &swapchain));
     return swapchain;
 }
+
 //==============================================================================
 //------------------------------------------------------------------------------
 int main(int argc, char const* argv[]) {
@@ -219,8 +221,29 @@ int main(int argc, char const* argv[]) {
     glfwGetWindowSize(win, &width, &height);
     VkSwapchainKHR swapChain = CreateSwapChain(
         physicalDevice, device, surface, graphicsQueueFamily, width, height);
+
+
+    VkSemaphore semaphore = CreateSemaphore(device);
+
+    VkQueue queue = VK_NULL_HANDLE;
+    vkGetDeviceQueue(device, graphicsQueueFamily, 0, &queue);
+    assert(queue != VK_NULL_HANDLE);
+
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
+        uint32_t imageIndex = 0;
+        VK_CHECK(vkAcquireNextImageKHR(device, swapChain, ~uint64_t(0), semaphore, VK_NULL_HANDLE, &imageIndex));
+
+        VkPresentInfoKHR presentInfo = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .swapchainCount = 1,
+            .pSwapchains = &swapChain,
+            .pImageIndices = &imageIndex
+        };
+
+        VK_CHECK(vkQueuePresentKHR(queue, &presentInfo));
+
+        VK_CHECK(vkDeviceWaitIdle(device));
     }
 
     return 0;
