@@ -78,7 +78,7 @@ VkSurfaceKHR CreateSurface(VkInstance instance, GLFWwindow* window) {
 //------------------------------------------------------------------------------
 VkInstance CreateInstance() {
     VkApplicationInfo appInfo = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-                                 .apiVersion = VK_API_VERSION_1_1};
+                                 .apiVersion = VK_API_VERSION_1_2};
     VkInstanceCreateInfo createInfo = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &appInfo};
@@ -496,7 +496,7 @@ int main(int argc, char const* argv[]) {
                              VK_SUBPASS_CONTENTS_INLINE);
 
         VkViewport viewport = {
-            .x = 0, .y = 0, .width = float(width), .height = float(height)};
+            .x = 0, .y = float(height), .width = float(width), .height = -float(height)};
         VkRect2D scissor = {.offset = {0, 0},
                             .extent = {uint32_t(width), uint32_t(height)}};
 
