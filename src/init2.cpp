@@ -421,7 +421,6 @@ int main(int argc, char const* argv[]) {
     VkImage images[MAX_SWAPCHAIN_IMAGES];
     uint32_t imageCount = sizeof(images) / sizeof(images[0]);
     VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, images));
-    cout << imageCount << endl;
     VkRenderPass renderPass = CreateRenderPass(device);
 
     const size_t MAX_IMAGE_VIEWS = MAX_SWAPCHAIN_IMAGES;
@@ -429,7 +428,7 @@ int main(int argc, char const* argv[]) {
     for (uint32_t i = 0; i != imageCount; ++i) {
         imageViews[i] = CreateImageView(device, images[i]);
     }
-
+    
     const size_t MAX_FRAMEBUFFERS = MAX_SWAPCHAIN_IMAGES;
     VkFramebuffer framebuffers[MAX_FRAMEBUFFERS];
     for (uint32_t i = 0; i != imageCount; ++i) {
@@ -481,7 +480,7 @@ int main(int argc, char const* argv[]) {
 
         VkClearColorValue color = {48.f / 255.f, 10.f / 255.f, 36.f / 255.f, 1};
         VkClearValue clearColor = {.color = color};
-
+      
         VkRenderPassBeginInfo passBeginInfo = {
             .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         passBeginInfo.renderPass = renderPass;
