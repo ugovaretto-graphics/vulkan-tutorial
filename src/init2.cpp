@@ -297,9 +297,20 @@ VkShaderModule LoadShader(VkDevice device, const char* path) {
     return shaderModule;
 }
 
+VkPipelineLayout CreatePipelineLayout(VkDevice device) {
+    VkPipelineLayoutCreateInfo info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    VK_CHECK(vkCreatePipelineLayout(device, &info, nullptr, &layout));
+
+    return layout;
+}
+
 VkPipeline CreateGraphicsPipeline(VkDevice device,
                                   VkPipelineCache pipelineCache,
-                                  VkShaderModule vs, VkShaderModule fs) {
+                                  VkRenderPass renderPass, VkShaderModule vs,
+                                  VkShaderModule fs, VkPipelineLayout layout) {
     VkPipelineShaderStageCreateInfo stages[2] = {};
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -324,11 +335,14 @@ VkPipeline CreateGraphicsPipeline(VkDevice device,
     info.pInputAssemblyState = &inputAssembly;
 
     VkPipelineViewportStateCreateInfo viewportState = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .scissorCount = 1};
     info.pViewportState = &viewportState;
 
     VkPipelineRasterizationStateCreateInfo rasterizationState = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .lineWidth = 1.0f};
     info.pRasterizationState = &rasterizationState;
 
     VkPipelineDepthStencilStateCreateInfo depthStencilState = {
@@ -336,14 +350,39 @@ VkPipeline CreateGraphicsPipeline(VkDevice device,
 
     info.pDepthStencilState = &depthStencilState;
 
-    VkPipelineColorBlendStateCreateInfo colorBlendState = {.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_ADVANCED_STATE_CREATE_INFO_EXT};
+    VkPipelineMultisampleStateCreateInfo multisampleState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT
+    };
+    info.pMultisampleState = &multisampleState;
+
+    VkPipelineColorBlendAttachmentState colorAttachmentState = {
+        .colorWriteMask = VK_COLOR_COMPONENT_A_BIT | VK_COLOR_COMPONENT_B_BIT |
+                          VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_R_BIT
+    };
+
+    VkPipelineColorBlendStateCreateInfo colorBlendState = {
+        .sType =
+            VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .attachmentCount = 1,
+        .pAttachments = &colorAttachmentState};
     info.pColorBlendState = &colorBlendState;
+
+    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT,
+                                      VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamicState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = sizeof(dynamicStates) / sizeof(dynamicStates[0]),
+        .pDynamicStates = dynamicStates};
+    info.pDynamicState = &dynamicState;
+
+    info.renderPass = renderPass;
+    info.layout = layout;
 
     VkPipeline pipeline = VK_NULL_HANDLE;
     vkCreateGraphicsPipelines(device, pipelineCache, 1, &info, nullptr,
                               &pipeline);
-    
+
     return pipeline;
 }
 
@@ -382,7 +421,7 @@ int main(int argc, char const* argv[]) {
     VkImage images[MAX_SWAPCHAIN_IMAGES];
     uint32_t imageCount = sizeof(images) / sizeof(images[0]);
     VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, images));
-
+    cout << imageCount << endl;
     VkRenderPass renderPass = CreateRenderPass(device);
 
     const size_t MAX_IMAGE_VIEWS = MAX_SWAPCHAIN_IMAGES;
@@ -405,14 +444,15 @@ int main(int argc, char const* argv[]) {
     vkGetDeviceQueue(device, graphicsQueueFamily, 0, &queue);
     assert(queue != VK_NULL_HANDLE);
 
-    const char* VSPATH = "~/projects/vulkan/zeux-niagara/src/vert.spv";
-    const char* FSPATH = "~/projects/vulkan/zeux-niagara/src/frag.spv";
+    const char* VSPATH = "/home/ugovaretto/projects/vulkan/zeux-niagara/src/shaders/vert.spv";
+    const char* FSPATH = "/home/ugovaretto/projects/vulkan/zeux-niagara/src/shaders/frag.spv";
     VkShaderModule triangleVS = LoadShader(device, VSPATH);
     VkShaderModule triangleFS = LoadShader(device, FSPATH);
 
+    VkPipelineLayout layout = CreatePipelineLayout(device);
     VkPipelineCache cache = VK_NULL_HANDLE;
-    VkPipeline trianglePipeline =
-        CreateGraphicsPipeline(device, cache, triangleVS, triangleFS);
+    VkPipeline trianglePipeline = CreateGraphicsPipeline(
+        device, cache, renderPass, triangleVS, triangleFS, layout);
 
     VkCommandPool commandPool = CreateCommandPool(device, graphicsQueueFamily);
 
@@ -455,6 +495,13 @@ int main(int argc, char const* argv[]) {
         vkCmdBeginRenderPass(commandBuffer, &passBeginInfo,
                              VK_SUBPASS_CONTENTS_INLINE);
 
+        VkViewport viewport = {
+            .x = 0, .y = 0, .width = float(width), .height = float(height)};
+        VkRect2D scissor = {.offset = {0, 0},
+                            .extent = {uint32_t(width), uint32_t(height)}};
+
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
         // DRAW CALLS HERE!!!
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           trianglePipeline);
