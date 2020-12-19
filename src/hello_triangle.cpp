@@ -197,7 +197,7 @@ class HelloTriangleApplication {
     bool isDeviceSuitable(VkPhysicalDevice device) {
         QueueFamilyIndices indices = findQueueFamilies(device);
 
-        return indices.isComplete();
+        return indices.isComplete(); VK_
     }
 
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
