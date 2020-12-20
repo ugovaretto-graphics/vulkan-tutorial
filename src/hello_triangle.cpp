@@ -495,6 +495,7 @@ int main(int argc, char const* argv[]) {
     int width = 0;
     int height = 0;
     glfwGetWindowSize(win, &width, &height);
+    //swapchain begin
     VkSwapchainKHR swapchain = CreateSwapChain(
         physicalDevice, device, surface, graphicsQueueFamily, width, height);
 
@@ -518,6 +519,7 @@ int main(int argc, char const* argv[]) {
         framebuffers[i] =
             CreateFramebuffer(device, renderPass, imageViews[i], width, height);
     }
+    //end swapchain
 
     VkSemaphore acquireSemaphore = CreateSemaphore(device);
     VkSemaphore releaseSemaphore = CreateSemaphore(device);
@@ -569,7 +571,7 @@ int main(int argc, char const* argv[]) {
                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
         vkCmdPipelineBarrier(commandBuffer,
-                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                              VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0,
                              nullptr, 1, &renderBeginBarrier);
