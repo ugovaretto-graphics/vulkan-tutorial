@@ -82,7 +82,6 @@ VkDebugReportCallbackEXT RegisterDebugCallback(VkInstance instance) {
     PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT =
         (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(
             instance, "vkCreateDebugReportCallbackEXT");
-    assert(false);
     assert(vkCreateDebugReportCallbackEXT);
 
     VkDebugReportCallbackEXT callback = VK_NULL_HANDLE;
@@ -460,6 +459,8 @@ int main(int argc, char const* argv[]) {
 
     VkInstance instance = CreateInstance();
 
+    VkDebugReportCallbackEXT debugCallback = RegisterDebugCallback(instance);
+
     VkPhysicalDevice physicalDevice = CreatePhysicalDevice(instance);
 
     const int graphicsQueueFamily = FindGraphicsQueueFamily(physicalDevice);
@@ -546,11 +547,10 @@ int main(int argc, char const* argv[]) {
 
         VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
-        VkImageMemoryBarrier renderBeginBarrier = ImageBarrier(
-            images[imageIndex], 0,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        VkImageMemoryBarrier renderBeginBarrier =
+            ImageBarrier(images[imageIndex], 0, VK_IMAGE_LAYOUT_UNDEFINED,
+                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
         vkCmdPipelineBarrier(commandBuffer,
                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
@@ -600,6 +600,15 @@ int main(int argc, char const* argv[]) {
         // vkCmdClearColorImage(commandBuffer, images[imageIndex],
         //                      VK_IMAGE_LAYOUT_GENERAL, &color, 1, &range);
 
+        VkImageMemoryBarrier renderEndBarrier = ImageBarrier(
+            images[imageIndex], VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0,
+                             nullptr, 1, &renderEndBarrier);
         VK_CHECK(vkEndCommandBuffer(commandBuffer));
 
         VkPipelineStageFlags submitStageMask =
@@ -626,13 +635,39 @@ int main(int argc, char const* argv[]) {
 
         VK_CHECK(vkQueuePresentKHR(queue, &presentInfo));
 
-        // VK_CHECK(vkQueueWaitIdle(queue));
         VK_CHECK(vkDeviceWaitIdle(device));
+        //VK_CHECK(vkQueueWaitIdle(queue));
+       
 
         // TODO: remove when we switch to desktop compute
         glfwWaitEvents();
     }
+
+    VK_CHECK(vkDeviceWaitIdle(device));
+
+    PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
+        (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(
+            instance, "vkDestroyDebugReportCallbackEXT");
+   // vkDestroyDebugReportCallbackEXT(instance, debugCallback, nullptr);
+    //VK_CHECK(vkResetCommandPool(device, commandPool, 0));
+    vkDestroyCommandPool(device, commandPool, nullptr);
+    for(uint32_t i = 0; i != imageCount; ++i) {
+       vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+    }
+    for(uint32_t i = 0; i != imageCount; ++i) {
+       vkDestroyImageView(device, imageViews[i], nullptr);
+    }
+    vkDestroyPipeline(device, trianglePipeline, nullptr);
+    vkDestroyPipelineLayout(device, layout, nullptr);
+    vkDestroyShaderModule(device, triangleVS, nullptr);
+    vkDestroyShaderModule(device, triangleFS, nullptr);
+    vkDestroyRenderPass(device, renderPass, nullptr);
+    vkDestroySemaphore(device, releaseSemaphore, nullptr);
+    vkDestroySemaphore(device, acquireSemaphore, nullptr);
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
+    vkDestroySurfaceKHR(instance, surface, nullptr);
     glfwDestroyWindow(win);
+    vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);
     return 0;
 }
