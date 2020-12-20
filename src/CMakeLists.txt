@@ -1,4 +1,6 @@
 
+include(compile_shaders.cmake)
+
 add_executable(init init.cpp)
 target_link_libraries(init ${LIBS})
 
@@ -10,3 +12,8 @@ target_link_libraries(init3 ${LIBS})
 
 add_executable(hello_triangle hello_triangle.cpp)
 target_link_libraries(hello_triangle ${LIBS})
+add_shader(hello_triangle triangle.frag.glsl)
+add_shader(hello_triangle triangle.vert.glsl)
+
+add_executable(hello_triangle_vulkan_samples hello_triangle_vulkan_samples.cpp)
+target_link_libraries(hello_triangle_vulkan_samples ${LIBS})

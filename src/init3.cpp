@@ -35,19 +35,20 @@ int FindGraphicsQueueFamily(VkPhysicalDevice device) {
     return -1;
 }
 
-VkPhysicalDevice SelectPhysicalDevice(VkPhysicalDevice* devices,
-                                      uint32_t count) {
+VkPhysicalDevice SelectPhysicalDevice(
+    VkPhysicalDevice* devices, uint32_t count,
+    VkPhysicalDeviceType type = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
     assert(devices);
     assert(count);
     VkPhysicalDeviceProperties props;
     for (VkPhysicalDevice* p = devices; p != devices + count; ++p) {
         vkGetPhysicalDeviceProperties(*p, &props);
-        if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        if (props.deviceType == type) {
             cout << "Selected device " << props.deviceName << endl;
             return *p;
         }
     }
-    return devices[0];
+    return VK_NULL_HANDLE;
 }
 
 const char** GetRequiredExtensions(uint32_t* count) {
@@ -67,6 +68,10 @@ VkBool32 DebugReportCallback(VkDebugReportFlagsEXT flags,
                              uint64_t object, size_t location,
                              int32_t messageCode, const char* pLayerPrefix,
                              const char* pMessage, void* pUserData) {
+    if ((flags & VK_DEBUG_REPORT_ERROR_BIT_EXT) ||
+        (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)) {
+        cout << location << " - " << pLayerPrefix << ": " << pMessage << endl;
+    }
     assert((flags & VK_DEBUG_REPORT_ERROR_BIT_EXT) == 0);
     return VK_FALSE;
 }
@@ -110,6 +115,13 @@ VkImageMemoryBarrier ImageBarrier(VkImage image, VkAccessFlags srcAccessMask,
 
     return result;
 }
+
+bool SupportPresentation(VkInstance instance, VkPhysicalDevice physicalDevice,
+                         uint32_t familyIndex) {
+    return glfwGetPhysicalDevicePresentationSupport(instance, physicalDevice,
+                                                    familyIndex) == GLFW_TRUE;
+}
+
 //==============================================================================
 //------------------------------------------------------------------------------
 VkSurfaceKHR CreateSurface(VkInstance instance, GLFWwindow* window) {
@@ -159,7 +171,9 @@ VkInstance CreateInstance() {
 }
 
 //------------------------------------------------------------------------------
-VkPhysicalDevice CreatePhysicalDevice(VkInstance instance) {
+VkPhysicalDevice CreatePhysicalDevice(
+    VkInstance instance,
+    VkPhysicalDeviceType type = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
     constexpr size_t MAX_PHYSICAL_DEVICES = 16;
     VkPhysicalDevice physicalDevices[MAX_PHYSICAL_DEVICES];
     uint32_t numPhysicalDevices =
@@ -167,7 +181,7 @@ VkPhysicalDevice CreatePhysicalDevice(VkInstance instance) {
     VK_CHECK(vkEnumeratePhysicalDevices(instance, &numPhysicalDevices,
                                         physicalDevices));
     VkPhysicalDevice physicalDevice =
-        SelectPhysicalDevice(physicalDevices, numPhysicalDevices);
+        SelectPhysicalDevice(physicalDevices, numPhysicalDevices, type);
     return physicalDevice;
 }
 
@@ -276,8 +290,7 @@ VkCommandPool CreateCommandPool(VkDevice device, uint32_t familyIndex) {
 VkRenderPass CreateRenderPass(VkDevice device) {
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkAttachmentReference colorAttachments = {
-        0,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};  // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR};//VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+        0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
 
     VkAttachmentDescription attachments[1] = {};
     attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -286,12 +299,8 @@ VkRenderPass CreateRenderPass(VkDevice device) {
     attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
     attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[0].initialLayout =
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;  // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;//VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachments[0].finalLayout =
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;  // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                                                   // //
-                                                   // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpass = {
         .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -461,10 +470,17 @@ int main(int argc, char const* argv[]) {
 
     VkDebugReportCallbackEXT debugCallback = RegisterDebugCallback(instance);
 
-    VkPhysicalDevice physicalDevice = CreatePhysicalDevice(instance);
+    VkPhysicalDevice physicalDevice =
+        CreatePhysicalDevice(instance, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    assert(physicalDevice != VK_NULL_HANDLE);
 
     const int graphicsQueueFamily = FindGraphicsQueueFamily(physicalDevice);
     assert(graphicsQueueFamily >= 0);
+
+    // if(!SupportPresentation(instance, physicalDevice, graphicsQueueFamily)) {
+    //     cerr << "Device does not support presentation" << endl;
+    //     exit(EXIT_FAILURE);
+    // }
 
     VkDevice device =
         CreateDevice(physicalDevice, uint32_t(graphicsQueueFamily));
@@ -605,10 +621,10 @@ int main(int argc, char const* argv[]) {
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                             VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0,
-                             nullptr, 1, &renderEndBarrier);
+        vkCmdPipelineBarrier(
+            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0,
+            nullptr, 0, nullptr, 1, &renderEndBarrier);
         VK_CHECK(vkEndCommandBuffer(commandBuffer));
 
         VkPipelineStageFlags submitStageMask =
@@ -636,8 +652,7 @@ int main(int argc, char const* argv[]) {
         VK_CHECK(vkQueuePresentKHR(queue, &presentInfo));
 
         VK_CHECK(vkDeviceWaitIdle(device));
-        //VK_CHECK(vkQueueWaitIdle(queue));
-       
+        // VK_CHECK(vkQueueWaitIdle(queue));
 
         // TODO: remove when we switch to desktop compute
         glfwWaitEvents();
@@ -648,14 +663,14 @@ int main(int argc, char const* argv[]) {
     PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
         (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(
             instance, "vkDestroyDebugReportCallbackEXT");
-   // vkDestroyDebugReportCallbackEXT(instance, debugCallback, nullptr);
-    //VK_CHECK(vkResetCommandPool(device, commandPool, 0));
+    // vkDestroyDebugReportCallbackEXT(instance, debugCallback, nullptr);
+    // VK_CHECK(vkResetCommandPool(device, commandPool, 0));
     vkDestroyCommandPool(device, commandPool, nullptr);
-    for(uint32_t i = 0; i != imageCount; ++i) {
-       vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+    for (uint32_t i = 0; i != imageCount; ++i) {
+        vkDestroyFramebuffer(device, framebuffers[i], nullptr);
     }
-    for(uint32_t i = 0; i != imageCount; ++i) {
-       vkDestroyImageView(device, imageViews[i], nullptr);
+    for (uint32_t i = 0; i != imageCount; ++i) {
+        vkDestroyImageView(device, imageViews[i], nullptr);
     }
     vkDestroyPipeline(device, trianglePipeline, nullptr);
     vkDestroyPipelineLayout(device, layout, nullptr);
