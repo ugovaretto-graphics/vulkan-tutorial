@@ -90,8 +90,8 @@ VkDebugReportCallbackEXT RegisterDebugCallback(VkInstance instance) {
     assert(vkCreateDebugReportCallbackEXT);
 
     VkDebugReportCallbackEXT callback = VK_NULL_HANDLE;
-    // VK_CHECK(
-    //     vkCreateDebugReportCallbackEXT(instance, &info, nullptr, &callback));
+    VK_CHECK(
+        vkCreateDebugReportCallbackEXT(instance, &info, nullptr, &callback));
     return callback;
 }
 
@@ -718,10 +718,7 @@ int main(int argc, char const* argv[]) {
 
     VK_CHECK(vkDeviceWaitIdle(device));
 
-    // PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
-    //    (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(
-    //        instance, "vkDestroyDebugReportCallbackEXT");
-    // vkDestroyDebugReportCallbackEXT(instance, debugCallback, nullptr);
+    
     vkDestroyCommandPool(device, commandPool, nullptr);
     DestroySwapchain(device, swapchain);
     vkDestroyPipeline(device, trianglePipeline, nullptr);
@@ -734,6 +731,10 @@ int main(int argc, char const* argv[]) {
     vkDestroySurfaceKHR(instance, surface, nullptr);
     glfwDestroyWindow(win);
     vkDestroyDevice(device, nullptr);
+    PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
+       (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(
+           instance, "vkDestroyDebugReportCallbackEXT");
+    vkDestroyDebugReportCallbackEXT(instance, debugCallback, nullptr);
     vkDestroyInstance(instance, nullptr);
     return 0;
 }
