@@ -212,7 +212,8 @@ VkDevice CreateDevice(VkPhysicalDevice physicalDevice, uint32_t queueFamily) {
 //------------------------------------------------------------------------------
 VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
                                VkSurfaceKHR surface, uint32_t familyIndex,
-                               uint32_t width, uint32_t height) {
+                               uint32_t width, uint32_t height,
+                               VkSwapchainKHR oldSwapchain = 0) {
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
     VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
                                                        &surfaceCapabilities));
@@ -265,7 +266,8 @@ VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
         // VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,  //
         // surfaceCapabilities.currentTransform,
         .compositeAlpha = surfaceComposite,
-        .presentMode = VK_PRESENT_MODE_FIFO_KHR};
+        .presentMode = VK_PRESENT_MODE_FIFO_KHR,
+        .oldSwapchain = oldSwapchain};
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     VK_CHECK(vkCreateSwapchainKHR(device, &info, nullptr, &swapchain));
 #ifdef PRINT_SWAPCHAIN_INFO
@@ -458,6 +460,82 @@ VkPipeline CreateGraphicsPipeline(VkDevice device,
     return pipeline;
 }
 
+//------------------------------------------------------------------------------
+struct Swapchain {
+    VkSwapchainKHR swapchain;
+    vector<VkImage> images;
+    vector<VkImageView> imageViews;
+    vector<VkFramebuffer> framebuffers;
+    uint32_t width;
+    uint32_t height;
+    uint32_t imageCount;
+};
+
+void CreateSwapchain(Swapchain& result, VkPhysicalDevice physicalDevice,
+                     VkDevice device, VkSurfaceKHR surface,
+                     VkSurfaceCapabilitiesKHR surfaceCaps, uint32_t familyIndex,
+                     VkFormat format, uint32_t width, uint32_t height,
+                     VkRenderPass renderPass, VkSwapchainKHR oldSwapchain = 0) {
+    VkSwapchainKHR swapchain =
+        CreateSwapChain(physicalDevice, device, surface, familyIndex, width,
+                        height, oldSwapchain);
+    uint32_t imageCount = 0;
+    VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr));
+    vector<VkImage> images(imageCount);
+    VK_CHECK(
+        vkGetSwapchainImagesKHR(device, swapchain, &imageCount, images.data()));
+
+    vector<VkImageView> imageViews(imageCount);
+    for (uint32_t i = 0; i != imageCount; ++i) {
+        imageViews[i] = CreateImageView(device, images[i]);
+    }
+
+    vector<VkFramebuffer> framebuffers(imageCount);
+    for (uint32_t i = 0; i != imageCount; ++i) {
+        framebuffers[i] =
+            CreateFramebuffer(device, renderPass, imageViews[i], width, height);
+    }
+
+    result.swapchain = swapchain;
+    result.images = images;
+    result.imageViews = imageViews;
+    result.framebuffers = framebuffers;
+    result.width = width;
+    result.height = height;
+    result.imageCount = imageCount;
+}
+
+void DestroySwapchain(VkDevice device, Swapchain& swapchain) {
+    for(uint32_t i = 0; i != swapchain.imageCount; ++i) {
+        vkDestroyFramebuffer(device, swapchain.framebuffers[i], nullptr);
+    }
+    for(uint32_t i = 0; i != swapchain.imageCount; ++i) {
+        vkDestroyImageView(device, swapchain.imageViews[i], nullptr);
+    }
+    vkDestroySwapchainKHR(device, swapchain.swapchain, nullptr);
+}
+
+void ResizeSwapchain(Swapchain& result, VkPhysicalDevice physicalDevice,
+                     VkDevice device, VkSurfaceKHR surface,
+                     VkSurfaceCapabilitiesKHR surfaceCaps, uint32_t familyIndex,
+                     VkFormat format, VkRenderPass renderPass,
+                     VkSwapchainKHR oldSwapchain = 0) {
+    VkSurfaceCapabilitiesKHR caps;
+    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
+                                                       &caps));
+    const uint32_t newWidth = caps.currentExtent.width;
+    const uint32_t newHeight = caps.currentExtent.height;
+
+    if (result.width == newWidth && result.height == newHeight) return;
+
+    Swapchain old = result;
+    CreateSwapchain(result, physicalDevice, device, surface, surfaceCaps,
+                    familyIndex, format, newWidth, newHeight,
+                    renderPass, old.swapchain);
+    VK_CHECK(vkDeviceWaitIdle(device));
+    DestroySwapchain(device, old);
+}
+
 //==============================================================================
 //------------------------------------------------------------------------------
 int main(int argc, char const* argv[]) {
@@ -495,31 +573,27 @@ int main(int argc, char const* argv[]) {
     int width = 0;
     int height = 0;
     glfwGetWindowSize(win, &width, &height);
-    //swapchain begin
+    VkRenderPass renderPass = CreateRenderPass(device);
+    // swapchain begin
     VkSwapchainKHR swapchain = CreateSwapChain(
         physicalDevice, device, surface, graphicsQueueFamily, width, height);
-
-    const size_t MAX_SWAPCHAIN_IMAGES = 8;
     uint32_t imageCount = 0;
     VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr));
     vector<VkImage> images(imageCount);
     VK_CHECK(
         vkGetSwapchainImagesKHR(device, swapchain, &imageCount, images.data()));
-    VkRenderPass renderPass = CreateRenderPass(device);
 
-    const size_t MAX_IMAGE_VIEWS = MAX_SWAPCHAIN_IMAGES;
-    VkImageView imageViews[MAX_IMAGE_VIEWS];
+    vector<VkImageView> imageViews(imageCount);
     for (uint32_t i = 0; i != imageCount; ++i) {
         imageViews[i] = CreateImageView(device, images[i]);
     }
 
-    const size_t MAX_FRAMEBUFFERS = MAX_SWAPCHAIN_IMAGES;
-    VkFramebuffer framebuffers[MAX_FRAMEBUFFERS];
+    vector<VkFramebuffer> framebuffers(imageCount);
     for (uint32_t i = 0; i != imageCount; ++i) {
         framebuffers[i] =
             CreateFramebuffer(device, renderPass, imageViews[i], width, height);
     }
-    //end swapchain
+    // end swapchain
 
     VkSemaphore acquireSemaphore = CreateSemaphore(device);
     VkSemaphore releaseSemaphore = CreateSemaphore(device);
@@ -528,8 +602,8 @@ int main(int argc, char const* argv[]) {
     vkGetDeviceQueue(device, graphicsQueueFamily, 0, &queue);
     assert(queue != VK_NULL_HANDLE);
 
-    //cmake build path: build/bin/debug|release
-    //cmake shader build path: build/shaders
+    // cmake build path: build/bin/debug|release
+    // cmake shader build path: build/shaders
     const char* VSPATH = "../../shaders/triangle.vert.glsl.spv";
     const char* FSPATH = "../../shaders/triangle.frag.glsl.spv";
     VkShaderModule triangleVS = LoadShader(device, VSPATH);
