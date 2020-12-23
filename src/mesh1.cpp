@@ -1,5 +1,6 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
+//#include <volk.h>
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
@@ -16,6 +17,10 @@ template <typename ArrayT>
 constexpr size_t size(const ArrayT& array) {
     return sizeof(array) / sizeof(array[0]);
 }
+
+#define VK_EXT(instance, name) \
+    PFN_vk##name vk##name =    \
+        (PFN_vk##name)vkGetInstanceProcAddr(instance, "vk" #name);
 
 //==============================================================================
 //------------------------------------------------------------------------------
@@ -76,10 +81,6 @@ VkBool32 DebugReportCallback(VkDebugReportFlagsEXT flags,
     return VK_FALSE;
 }
 
-#define VK_EXT(instance, name) \
-    PFN_vk##name vk##name =    \
-        (PFN_vk##name)vkGetInstanceProcAddr(instance, "vk" #name);
-
 VkDebugReportCallbackEXT RegisterDebugCallback(VkInstance instance) {
     VkDebugReportCallbackCreateInfoEXT info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
@@ -87,10 +88,6 @@ VkDebugReportCallbackEXT RegisterDebugCallback(VkInstance instance) {
                  VK_DEBUG_REPORT_WARNING_BIT_EXT |
                  VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT,
         .pfnCallback = DebugReportCallback};
-
-    // PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT =
-    //     (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(
-    //         instance, "vkCreateDebugReportCallbackEXT");
     VK_EXT(instance, CreateDebugReportCallbackEXT);
     assert(vkCreateDebugReportCallbackEXT);
 
@@ -543,10 +540,13 @@ void ResizeSwapchain(Swapchain& result, VkPhysicalDevice physicalDevice,
 int main(int argc, char const* argv[]) {
     assert(glfwInit());
     assert(glfwVulkanSupported() == GLFW_TRUE);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    //VK_CHECK(volkInitialize());
     GLFWwindow* win = glfwCreateWindow(1024, 768, "niagara", nullptr, nullptr);
     assert(win);
 
     VkInstance instance = CreateInstance();
+    //volkLoadInstance(instance);
 
     VkDebugReportCallbackEXT debugCallback = RegisterDebugCallback(instance);
 
@@ -589,8 +589,8 @@ int main(int argc, char const* argv[]) {
 
     // cmake build path: build/bin/debug|release
     // cmake shader build path: build/shaders
-    const char* VSPATH = "../../shaders/triangle.vert.glsl.spv";
-    const char* FSPATH = "../../shaders/triangle.frag.glsl.spv";
+    const char* VSPATH = "../../shaders/mesh1.vert.glsl.spv";
+    const char* FSPATH = "../../shaders/mesh1.frag.glsl.spv";
     VkShaderModule triangleVS = LoadShader(device, VSPATH);
     VkShaderModule triangleFS = LoadShader(device, FSPATH);
 
@@ -612,8 +612,7 @@ int main(int argc, char const* argv[]) {
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
         glfwGetWindowSize(win, &width, &height);
-        ResizeSwapchain(swapchain, physicalDevice, device, surface,
-                        graphicsQueueFamily, renderPass, swapchain.swapchain);
+        ResizeSwapchain(swapchain, physicalDevice, device, surface, graphicsQueueFamily, renderPass, swapchain.swapchain);
         uint32_t imageIndex = 0;
         VK_CHECK(vkAcquireNextImageKHR(device, swapchain.swapchain,
                                        ~uint64_t(0), acquireSemaphore,
@@ -627,10 +626,10 @@ int main(int argc, char const* argv[]) {
 
         VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
-        VkImageMemoryBarrier renderBeginBarrier = ImageBarrier(
-            swapchain.images[imageIndex], 0, VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        VkImageMemoryBarrier renderBeginBarrier =
+            ImageBarrier(swapchain.images[imageIndex], 0, VK_IMAGE_LAYOUT_UNDEFINED,
+                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
         vkCmdPipelineBarrier(commandBuffer,
                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -724,6 +723,7 @@ int main(int argc, char const* argv[]) {
 
     VK_CHECK(vkDeviceWaitIdle(device));
 
+    
     vkDestroyCommandPool(device, commandPool, nullptr);
     DestroySwapchain(device, swapchain);
     vkDestroyPipeline(device, trianglePipeline, nullptr);

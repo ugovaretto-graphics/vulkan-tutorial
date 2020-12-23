@@ -29,9 +29,14 @@ pkg_search_module(GLFW REQUIRED glfw3)
 add_compile_definitions(VK_USE_PLATFORM_XLIB_KHR GLFW_EXPOSE_NATIVE_X11 
                         GLFW_INCLUDE_VULKAN)
 
+
+set(MESHOPTIMIZER_DIR /usr/local/meshoptimizer)
+set(VOLK_DIR /usr/local/volk)
+link_directories(${MESHOPTIMIZER_DIR}/lib ${VOLK_DIR}/lib)
 #includes and libs
 set(INCLUDE_DIRS ${Vulkan_INCLUDE_DIRS} ${GLFW_INCLUDE_DIRS} 
-    ${CMAKE_SOURCE_DIR}/include)
+    ${CMAKE_SOURCE_DIR}/include ${MESHOPTIMIZER_DIR}/include
+    ${VOLK_DIR}/include)
 set(LIBS ${Vulkan_LIBRARY} ${GLFW_LIBRARIES})
 
 include_directories(${INCLUDE_DIRS})

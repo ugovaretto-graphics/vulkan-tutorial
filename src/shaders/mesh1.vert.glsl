@@ -2,7 +2,6 @@
 
 #pragma shader_stage(vertex)
 
-
 const vec3 vertices[] = {
   vec3(0, 0.5, 0),
   vec3(0.5, -0.5, 0),

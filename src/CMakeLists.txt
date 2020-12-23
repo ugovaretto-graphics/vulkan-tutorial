@@ -15,5 +15,12 @@ target_link_libraries(hello_triangle ${LIBS})
 add_shader(hello_triangle triangle.frag.glsl)
 add_shader(hello_triangle triangle.vert.glsl)
 
+add_executable(mesh1 mesh1.cpp)
+add_shader(mesh1 mesh1.frag.glsl)
+add_shader(mesh1 mesh1.vert.glsl)
+#target_compile_definitions(mesh1 PRIVATE VK_NO_PROTOTYPES)
+target_compile_options(mesh1 PRIVATE) # -fPIC)
+target_link_libraries(mesh1 ${LIBS} meshoptimizer)# volk  dl)
+
 add_executable(hello_triangle_vulkan_samples hello_triangle_vulkan_samples.cpp)
 target_link_libraries(hello_triangle_vulkan_samples ${LIBS})

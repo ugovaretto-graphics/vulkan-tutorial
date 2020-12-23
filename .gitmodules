@@ -1,0 +1,6 @@
+[submodule "dep/volk"]
+	path = dep/volk
+	url = https://github.com/zeux/volk.git
+[submodule "dep/meshoptimizer"]
+	path = dep/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
