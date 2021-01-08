@@ -19,7 +19,7 @@ add_executable(mesh1 mesh1.cpp)
 add_shader(mesh1 mesh1.frag.glsl)
 add_shader(mesh1 mesh1.vert.glsl)
 #target_compile_definitions(mesh1 PRIVATE VK_NO_PROTOTYPES)
-target_compile_options(mesh1 PRIVATE) # -fPIC)
+target_compile_options(mesh1 PRIVATE)
 target_link_libraries(mesh1 ${LIBS} meshoptimizer)# volk  dl)
 
 add_executable(hello_triangle_vulkan_samples hello_triangle_vulkan_samples.cpp)

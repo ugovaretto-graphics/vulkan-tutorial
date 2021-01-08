@@ -1,17 +1,30 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 //#include <volk.h>
+
+#include <unistd.h>
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
 #include <bitset>
 #include <cassert>
+#include <climits>
 #include <memory>
 #include <vector>
 
 #include "common.h"
 
 using namespace std;
+
+string Cwd() {
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        return string(cwd);
+    } else {
+        perror("getcwd() error");
+        return "";
+    }
+}
 
 template <typename ArrayT>
 constexpr size_t size(const ArrayT& array) {
@@ -213,12 +226,17 @@ VkDevice CreateDevice(VkPhysicalDevice physicalDevice, uint32_t queueFamily) {
 
 //------------------------------------------------------------------------------
 VkSwapchainKHR CreateSwapChain(VkPhysicalDevice physicalDevice, VkDevice device,
-                               VkSurfaceKHR surface, uint32_t familyIndex,
-                               uint32_t width, uint32_t height,
+                               VkSurfaceKHR surface, uint32_t familyIndex, /*
+                                uint32_t width, uint32_t height,*/
                                VkSwapchainKHR oldSwapchain = 0) {
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
     VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
                                                        &surfaceCapabilities));
+    VkSurfaceCapabilitiesKHR caps;
+    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
+                                                       &caps));
+    const uint32_t width = caps.currentExtent.width;
+    const uint32_t height = caps.currentExtent.height;
 
     VkCompositeAlphaFlagBitsKHR surfaceComposite =
         (surfaceCapabilities.supportedCompositeAlpha &
@@ -475,11 +493,15 @@ struct Swapchain {
 
 void CreateSwapchain(Swapchain& result, VkPhysicalDevice physicalDevice,
                      VkDevice device, VkSurfaceKHR surface,
-                     uint32_t familyIndex, uint32_t width, uint32_t height,
-                     VkRenderPass renderPass, VkSwapchainKHR oldSwapchain = 0) {
-    VkSwapchainKHR swapchain =
-        CreateSwapChain(physicalDevice, device, surface, familyIndex, width,
-                        height, oldSwapchain);
+                     uint32_t familyIndex, VkRenderPass renderPass,
+                     VkSwapchainKHR oldSwapchain = 0) {
+    VkSurfaceCapabilitiesKHR caps;
+    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
+                                                       &caps));
+    const uint32_t width = caps.currentExtent.width;
+    const uint32_t height = caps.currentExtent.height;
+    VkSwapchainKHR swapchain = CreateSwapChain(physicalDevice, device, surface,
+                                               familyIndex, oldSwapchain);
     uint32_t imageCount = 0;
     VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr));
     vector<VkImage> images(imageCount);
@@ -530,7 +552,7 @@ void ResizeSwapchain(Swapchain& result, VkPhysicalDevice physicalDevice,
 
     Swapchain old = result;
     CreateSwapchain(result, physicalDevice, device, surface, familyIndex,
-                    newWidth, newHeight, renderPass, old.swapchain);
+                    renderPass, old.swapchain);
     VK_CHECK(vkDeviceWaitIdle(device));
     DestroySwapchain(device, old);
 }
@@ -541,12 +563,12 @@ int main(int argc, char const* argv[]) {
     assert(glfwInit());
     assert(glfwVulkanSupported() == GLFW_TRUE);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    //VK_CHECK(volkInitialize());
+    // VK_CHECK(volkInitialize());
     GLFWwindow* win = glfwCreateWindow(1024, 768, "niagara", nullptr, nullptr);
     assert(win);
 
     VkInstance instance = CreateInstance();
-    //volkLoadInstance(instance);
+    // volkLoadInstance(instance);
 
     VkDebugReportCallbackEXT debugCallback = RegisterDebugCallback(instance);
 
@@ -578,7 +600,7 @@ int main(int argc, char const* argv[]) {
     VkRenderPass renderPass = CreateRenderPass(device);
     Swapchain swapchain;
     CreateSwapchain(swapchain, physicalDevice, device, surface,
-                    graphicsQueueFamily, width, height, renderPass);
+                    graphicsQueueFamily, renderPass);
 
     VkSemaphore acquireSemaphore = CreateSemaphore(device);
     VkSemaphore releaseSemaphore = CreateSemaphore(device);
@@ -589,8 +611,8 @@ int main(int argc, char const* argv[]) {
 
     // cmake build path: build/bin/debug|release
     // cmake shader build path: build/shaders
-    const char* VSPATH = "../../shaders/mesh1.vert.glsl.spv";
-    const char* FSPATH = "../../shaders/mesh1.frag.glsl.spv";
+    const char* VSPATH = "../../shaders/triangle.vert.glsl.spv";
+    const char* FSPATH = "../../shaders/triangle.frag.glsl.spv";
     VkShaderModule triangleVS = LoadShader(device, VSPATH);
     VkShaderModule triangleFS = LoadShader(device, FSPATH);
 
@@ -612,7 +634,8 @@ int main(int argc, char const* argv[]) {
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
         glfwGetWindowSize(win, &width, &height);
-        ResizeSwapchain(swapchain, physicalDevice, device, surface, graphicsQueueFamily, renderPass, swapchain.swapchain);
+        ResizeSwapchain(swapchain, physicalDevice, device, surface,
+                        graphicsQueueFamily, renderPass, swapchain.swapchain);
         uint32_t imageIndex = 0;
         VK_CHECK(vkAcquireNextImageKHR(device, swapchain.swapchain,
                                        ~uint64_t(0), acquireSemaphore,
@@ -626,10 +649,10 @@ int main(int argc, char const* argv[]) {
 
         VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
-        VkImageMemoryBarrier renderBeginBarrier =
-            ImageBarrier(swapchain.images[imageIndex], 0, VK_IMAGE_LAYOUT_UNDEFINED,
-                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        VkImageMemoryBarrier renderBeginBarrier = ImageBarrier(
+            swapchain.images[imageIndex], 0, VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
         vkCmdPipelineBarrier(commandBuffer,
                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -723,7 +746,6 @@ int main(int argc, char const* argv[]) {
 
     VK_CHECK(vkDeviceWaitIdle(device));
 
-    
     vkDestroyCommandPool(device, commandPool, nullptr);
     DestroySwapchain(device, swapchain);
     vkDestroyPipeline(device, trianglePipeline, nullptr);
