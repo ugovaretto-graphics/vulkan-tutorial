@@ -13,9 +13,10 @@
 #include <memory>
 #include <vector>
 
-#define FAST_OBJ_IMPLEMENTATION
 #include "common.h"
-#include "fast_obj.h"
+
+#define TINYOBJLOADER_IMPLEMENTATION  // define this in only *one* .cc
+#include "tiny_obj_loader.h"
 
 using namespace std;
 
@@ -429,6 +430,28 @@ VkPipeline CreateGraphicsPipeline(VkDevice device,
     VkPipelineVertexInputStateCreateInfo vertexInput = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     info.pVertexInputState = &vertexInput;
+
+    // TODO: temporary
+    VkVertexInputBindingDescription stream = {0, 8 * sizeof(float),
+                                              VK_VERTEX_INPUT_RATE_VERTEX};
+    VkVertexInputAttributeDescription attrs[3] = {};
+
+    attrs[0].location = 0;
+    attrs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attrs[0].offset = 0;
+    attrs[1].location = 1;
+    attrs[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attrs[1].offset = 12;
+    attrs[2].location = 2;
+    attrs[2].format = VK_FORMAT_R32G32_SFLOAT;
+    attrs[2].offset = 24;
+
+    vertexInput.vertexBindingDescriptionCount = 1;
+    vertexInput.pVertexBindingDescriptions = &stream;
+    vertexInput.vertexAttributeDescriptionCount = 3;
+    vertexInput.pVertexAttributeDescriptions = attrs;
+    //
+
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
@@ -578,72 +601,129 @@ union Triangle {
     char data[sizeof(Vertex) * 3];
 };
 
-bool LoadMesh(Mesh& result, const char* path)  //, double& reindex)
-{
-    fastObjMesh* obj = fast_obj_read(path);
-    if (!obj) {
-        printf("Error loading %s: file not found\n", path);
-        result = Mesh();
-        return false;
-    }
+bool LoadMesh(Mesh& result, const char* path) {
+    std::string inputfile = path;
+    tinyobj::ObjReaderConfig reader_config;
+    reader_config.mtl_search_path = "./";  // Path to material files
 
-    size_t total_indices = 0;
+    tinyobj::ObjReader reader;
 
-    for (unsigned int i = 0; i < obj->face_count; ++i)
-        total_indices += 3 * (obj->face_vertices[i] - 2);
-
-    std::vector<Vertex> vertices(total_indices);
-
-    size_t vertex_offset = 0;
-    size_t index_offset = 0;
-
-    for (unsigned int i = 0; i < obj->face_count; ++i) {
-        for (unsigned int j = 0; j < obj->face_vertices[i]; ++j) {
-            fastObjIndex gi = obj->indices[index_offset + j];
-
-            Vertex v = {
-                obj->positions[gi.p * 3 + 0], obj->positions[gi.p * 3 + 1],
-                obj->positions[gi.p * 3 + 2], obj->normals[gi.n * 3 + 0],
-                obj->normals[gi.n * 3 + 1],   obj->normals[gi.n * 3 + 2],
-                obj->texcoords[gi.t * 2 + 0], obj->texcoords[gi.t * 2 + 1],
-            };
-
-            // triangulate polygon on the fly; offset-3 is always the first
-            // polygon vertex
-            if (j >= 3) {
-                vertices[vertex_offset + 0] = vertices[vertex_offset - 3];
-                vertices[vertex_offset + 1] = vertices[vertex_offset - 1];
-                vertex_offset += 2;
-            }
-
-            vertices[vertex_offset] = v;
-            vertex_offset++;
+    if (!reader.ParseFromFile(inputfile, reader_config)) {
+        if (!reader.Error().empty()) {
+            std::cerr << "TinyObjReader: " << reader.Error();
         }
-
-        index_offset += obj->face_vertices[i];
+        exit(1);
     }
 
-    fast_obj_destroy(obj);
+    if (!reader.Warning().empty()) {
+        std::cout << "TinyObjReader: " << reader.Warning();
+    }
 
-    // reindex = timestamp();
+    auto& attrib = reader.GetAttrib();
+    auto& shapes = reader.GetShapes();
+    auto& materials = reader.GetMaterials();
 
-    // Mesh result;
+    // Loop over shapes
+    for (size_t s = 0; s < shapes.size(); s++) {
+        // Loop over faces(polygon)
+        size_t index_offset = 0;
+        for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+            int fv = shapes[s].mesh.num_face_vertices[f];
+            // Loop over vertices in the face.
+            for (size_t v = 0; v < fv; v++) {
+                // access to vertex
+                tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+                const ssize_t vidx = idx.vertex_index;
+                const ssize_t nidx = idx.normal_index;
+                const ssize_t tidx = idx.texcoord_index;
+                tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
+                tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
+                tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
+                tinyobj::real_t nx =
+                    nidx >= 0 ? attrib.normals[3 * nidx + 0] : 0;
+                tinyobj::real_t ny =
+                    nidx >= 0 ? attrib.normals[3 * nidx + 1] : 0;
+                tinyobj::real_t nz =
+                    nidx >= 0 ? attrib.normals[3 * nidx + 2] : 0;
+                tinyobj::real_t tx =
+                    tidx >= 0 ? attrib.texcoords[2 * tidx + 0] : 0;
+                tinyobj::real_t ty =
+                    tidx >= 0 ? attrib.texcoords[2 * tidx + 1] : 0;
+                // Optional: vertex colors
+                // tinyobj::real_t red = attrib.colors[3*idx.vertex_index+0];
+                // tinyobj::real_t green = attrib.colors[3*idx.vertex_index+1];
+                // tinyobj::real_t blue = attrib.colors[3*idx.vertex_index+2];
+            }
+            index_offset += fv;
 
-    std::vector<unsigned int> remap(total_indices);
+            // per-face material
+            shapes[s].mesh.material_ids[f];
+        }
+    }
 
-    size_t total_vertices = meshopt_generateVertexRemap(
-        &remap[0], NULL, total_indices, &vertices[0], total_indices,
-        sizeof(Vertex));
+    assert(!"To be completed...");
+}
 
-    result.indices.resize(total_indices);
-    meshopt_remapIndexBuffer(&result.indices[0], NULL, total_indices,
-                             &remap[0]);
+//------------------------------------------------------------------------------
 
-    result.vertices.resize(total_vertices);
-    meshopt_remapVertexBuffer(&result.vertices[0], &vertices[0], total_indices,
-                              sizeof(Vertex), &remap[0]);
+uint32_t SelectMemoryType(const VkPhysicalDeviceMemoryProperties& memProps,
+                          uint32_t memTypeBits, VkMemoryPropertyFlags flags) {
+    for (uint32_t i = 0; i != memProps.memoryTypeCount; ++i) {
+        if ((memTypeBits & (1 << i)) != 0 &&
+            (memProps.memoryTypes[i].propertyFlags & flags) == flags) {
+            return i;
+        }
+    }
+    assert(!"No compatible memory type found");
+    return ~0u;
+}
 
-    return true;
+//------------------------------------------------------------------------------
+struct Buffer {
+    VkBuffer buffer;
+    VkDeviceMemory memory;
+    void* data;
+    size_t size;
+};
+
+void CreateBuffer(Buffer& result, VkDevice device,
+                  VkPhysicalDeviceMemoryProperties memProps, size_t size,
+                  VkBufferUsageFlags usage) {
+    VkBufferCreateInfo createInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                                     .size = size, .usage = usage};
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateBuffer(device, &createInfo, nullptr, &buffer));
+
+    VkMemoryRequirements memoryRequirements;
+    vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
+    uint32_t memoryTypeIndex =
+        SelectMemoryType(memProps, memoryRequirements.memoryTypeBits,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                             VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    assert(memoryTypeIndex != ~0u);
+
+    VkMemoryAllocateInfo allocateInfo = {
+        VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = memoryRequirements.size,
+        memoryTypeIndex = memoryTypeIndex};
+
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VK_CHECK(vkAllocateMemory(device, &allocateInfo, nullptr, &memory));
+
+    VK_CHECK(vkBindBufferMemory(device, buffer, memory, 0));
+
+    void* data = nullptr;
+    VK_CHECK(vkMapMemory(device, memory, 0, size, 0, &data));
+
+    result.buffer = buffer;
+    result.memory = memory;
+    result.data = data;
+    result.size = size;
+}
+
+void DestroyBuffer(Buffer& buffer, VkDevice device) {
+    vkFreeMemory(device, buffer.memory, nullptr);
+    vkDestroyBuffer(device, buffer.buffer, nullptr);
 }
 
 //==============================================================================
@@ -699,9 +779,9 @@ int main(int argc, char const* argv[]) {
     assert(queue != VK_NULL_HANDLE);
 
     // cmake build path: build/bin/debug|release
-    // cmake shader build path: build/shaders
-    const char* VSPATH = "../../shaders/triangle.vert.glsl.spv";
-    const char* FSPATH = "../../shaders/triangle.frag.glsl.spv";
+    // cmake shaders build path: build/shaders
+    const char* VSPATH = "../../shaders/mesh1.vert.glsl.spv";
+    const char* FSPATH = "../../shaders/mesh1.frag.glsl.spv";
     VkShaderModule triangleVS = LoadShader(device, VSPATH);
     VkShaderModule triangleFS = LoadShader(device, FSPATH);
 
@@ -719,6 +799,24 @@ int main(int argc, char const* argv[]) {
         .commandBufferCount = 1};
     VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
     VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer));
+
+    VkPhysicalDeviceMemoryProperties memProps;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProps);
+    const char* meshPath = "../../../assets/tmp-data/kitten.obj";
+    Mesh mesh;
+    bool rcm = LoadMesh(mesh, meshPath);
+    assert(rcm);
+    Buffer vb = {};
+    const size_t BUFSIZE = 128 * 1024 * 1024;
+    CreateBuffer(vb, device, memProps, BUFSIZE,
+                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    Buffer ib = {};
+    CreateBuffer(ib, device, memProps, BUFSIZE,
+                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    assert(vb.size >= mesh.vertices.size() * sizeof(Vertex));
+    memcpy(vb.data, mesh.vertices.data(), mesh.vertices.size());
+    assert(ib.size >= mesh.indices.size() * sizeof(uint32_t));
+    memcpy(ib.data, mesh.indices.data(), mesh.indices.size());
 
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
@@ -777,8 +875,12 @@ int main(int argc, char const* argv[]) {
         // DRAW CALLS HERE!!!
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           trianglePipeline);
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
+        VkDeviceSize dummyOffset = 0;
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vb.buffer, &dummyOffset);
+        vkCmdBindIndexBuffer(commandBuffer, ib.buffer, 0, VK_INDEX_TYPE_UINT32);
+        // vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        vkCmdDrawIndexed(commandBuffer, mesh.indices.size(), 1, 0, 0, 0);
         vkCmdEndRenderPass(commandBuffer);
         //-------------------------------------------------
 
@@ -834,7 +936,9 @@ int main(int argc, char const* argv[]) {
     }
 
     VK_CHECK(vkDeviceWaitIdle(device));
-
+    DestroyBuffer(vb, device);
+    DestroyBuffer(ib, device);
+    ;
     vkDestroyCommandPool(device, commandPool, nullptr);
     DestroySwapchain(device, swapchain);
     vkDestroyPipeline(device, trianglePipeline, nullptr);
