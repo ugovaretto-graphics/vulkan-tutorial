@@ -601,7 +601,15 @@ union Triangle {
     char data[sizeof(Vertex) * 3];
 };
 
-bool LoadMesh(Mesh& result, const char* path) {
+struct VertexProperties {
+    bool normal = false;
+    bool texCoord = false;
+    bool valid = false;
+    operator bool() const { return valid; }
+};
+
+
+VertexProperties LoadMesh(Mesh& result, const char* path) {
     std::string inputfile = path;
     tinyobj::ObjReaderConfig reader_config;
     reader_config.mtl_search_path = "./";  // Path to material files
@@ -622,7 +630,13 @@ bool LoadMesh(Mesh& result, const char* path) {
     auto& attrib = reader.GetAttrib();
     auto& shapes = reader.GetShapes();
     auto& materials = reader.GetMaterials();
-
+    size_t totalIndices = 0;
+    for(auto s: shapes) {
+        totalIndices += s.mesh.indices.size();
+    }
+    result.vertices.resize(attrib.vertices.size()/3);
+    bool normal = false;
+    bool texCoord = false;
     // Loop over shapes
     for (size_t s = 0; s < shapes.size(); s++) {
         // Loop over faces(polygon)
@@ -636,6 +650,8 @@ bool LoadMesh(Mesh& result, const char* path) {
                 const ssize_t vidx = idx.vertex_index;
                 const ssize_t nidx = idx.normal_index;
                 const ssize_t tidx = idx.texcoord_index;
+                if(nidx >= 0) normal = true;
+                if(tidx >= 0) texCoord = true; 
                 tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
                 tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
                 tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
@@ -653,15 +669,22 @@ bool LoadMesh(Mesh& result, const char* path) {
                 // tinyobj::real_t red = attrib.colors[3*idx.vertex_index+0];
                 // tinyobj::real_t green = attrib.colors[3*idx.vertex_index+1];
                 // tinyobj::real_t blue = attrib.colors[3*idx.vertex_index+2];
+                Vertex vert = {.vx = vx, .vy = vy, .vz = vz, .nx = nx, .ny = ny, .nz = nz, .tu = tx, .tv = ty};
+                result.vertices[idx.vertex_index] = vert;
+                result.indices.push_back(idx.vertex_index);
             }
             index_offset += fv;
-
-            // per-face material
-            shapes[s].mesh.material_ids[f];
+           
+            //per-face material
+            //shapes[s].mesh.material_ids[f];
         }
     }
 
-    assert(!"To be completed...");
+    VertexProperties vp;
+    vp.valid = result.vertices.size() > 0;
+    vp.normal = normal;
+    vp.texCoord = texCoord;
+    return vp;
 }
 
 //------------------------------------------------------------------------------
@@ -814,9 +837,9 @@ int main(int argc, char const* argv[]) {
     CreateBuffer(ib, device, memProps, BUFSIZE,
                  VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     assert(vb.size >= mesh.vertices.size() * sizeof(Vertex));
-    memcpy(vb.data, mesh.vertices.data(), mesh.vertices.size());
+    memcpy(vb.data, mesh.vertices.data(), sizeof(Vertex) * mesh.vertices.size());
     assert(ib.size >= mesh.indices.size() * sizeof(uint32_t));
-    memcpy(ib.data, mesh.indices.data(), mesh.indices.size());
+    memcpy(ib.data, mesh.indices.data(), mesh.indices.size() * sizeof(uint32_t));
 
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
