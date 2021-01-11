@@ -217,15 +217,16 @@ VkDevice CreateDevice(VkPhysicalDevice physicalDevice, uint32_t queueFamily) {
     const char* extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
                                 VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
     //TODO
-    //VkPhysicalDeviceFeatures features = {.vertexPipelineStoresAndAtomics = true};
-    //features.vertexPipelineStoresAndAtomics = true;
+    VkPhysicalDeviceFeatures features = {.vertexPipelineStoresAndAtomics = true};
+    features.vertexPipelineStoresAndAtomics = true;
 
     VkDeviceCreateInfo deviceInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queueCreateInfo,
         .enabledExtensionCount = sizeof(extensions) / sizeof(extensions[0]),
-        .ppEnabledExtensionNames = extensions};
+        .ppEnabledExtensionNames = extensions,
+        .pEnabledFeatures = &features};
 
     VkDevice device = VK_NULL_HANDLE;
     VK_CHECK(vkCreateDevice(physicalDevice, &deviceInfo, nullptr, &device));
