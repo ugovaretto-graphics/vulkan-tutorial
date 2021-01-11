@@ -177,7 +177,7 @@ VkInstance CreateInstance() {
     const char* extensions[] = {VK_KHR_SURFACE_EXTENSION_NAME,
                                 VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
                                 VK_KHR_XLIB_SURFACE_EXTENSION_NAME};
-   
+
     createInfo.ppEnabledExtensionNames = extensions;
     createInfo.enabledExtensionCount =
         sizeof(extensions) / sizeof(extensions[0]);
@@ -216,8 +216,9 @@ VkDevice CreateDevice(VkPhysicalDevice physicalDevice, uint32_t queueFamily) {
 
     const char* extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
                                 VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
-    //TODO
-    VkPhysicalDeviceFeatures features = {.vertexPipelineStoresAndAtomics = true};
+    // TODO
+    VkPhysicalDeviceFeatures features = {.vertexPipelineStoresAndAtomics =
+                                             true};
     features.vertexPipelineStoresAndAtomics = true;
 
     VkDeviceCreateInfo deviceInfo = {
@@ -404,7 +405,8 @@ VkShaderModule LoadShader(VkDevice device, const char* path) {
     return shaderModule;
 }
 
-VkPipelineLayout CreatePipelineLayout(VkDevice device) {
+VkPipelineLayout CreatePipelineLayout(VkDevice device,
+                                      VkDescriptorSetLayout& setLayout) {
     VkDescriptorSetLayoutBinding setBindings[1] = {};
     setBindings[0].binding = 0;
     setBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -416,7 +418,7 @@ VkPipelineLayout CreatePipelineLayout(VkDevice device) {
         VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
     setCreateInfo.bindingCount = size(setBindings);
     setCreateInfo.pBindings = setBindings;
-    VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+    setLayout = VK_NULL_HANDLE;
     VK_CHECK(vkCreateDescriptorSetLayout(device, &setCreateInfo, nullptr,
                                          &setLayout));
 
@@ -428,7 +430,6 @@ VkPipelineLayout CreatePipelineLayout(VkDevice device) {
     VkPipelineLayout layout = VK_NULL_HANDLE;
     VK_CHECK(vkCreatePipelineLayout(device, &info, nullptr, &layout));
 
-    // TODO: vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
     return layout;
 }
 
@@ -817,7 +818,8 @@ int main(int argc, char const* argv[]) {
     VkShaderModule triangleVS = LoadShader(device, VSPATH);
     VkShaderModule triangleFS = LoadShader(device, FSPATH);
 
-    VkPipelineLayout layout = CreatePipelineLayout(device);
+    VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+    VkPipelineLayout layout = CreatePipelineLayout(device, setLayout);
     VkPipelineCache cache = VK_NULL_HANDLE;
     VkPipeline trianglePipeline = CreateGraphicsPipeline(
         device, cache, renderPass, triangleVS, triangleFS, layout);
@@ -840,11 +842,13 @@ int main(int argc, char const* argv[]) {
     assert(rcm);
     Buffer vb = {};
     const size_t BUFSIZE = 128 * 1024 * 1024;
-    CreateBuffer(vb, device, memProps, BUFSIZE,
-                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    CreateBuffer(
+        vb, device, memProps, BUFSIZE,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     Buffer ib = {};
-    CreateBuffer(ib, device, memProps, BUFSIZE,
-                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    CreateBuffer(
+        ib, device, memProps, BUFSIZE,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     assert(vb.size >= mesh.vertices.size() * sizeof(Vertex));
     memcpy(vb.data, mesh.vertices.data(),
            sizeof(Vertex) * mesh.vertices.size());
@@ -913,10 +917,7 @@ int main(int argc, char const* argv[]) {
                           trianglePipeline);
 
         VkDescriptorBufferInfo bufferInfo = {
-          .buffer = vb.buffer,
-          .offset = 0,
-          .range = vb.size
-        };
+            .buffer = vb.buffer, .offset = 0, .range = vb.size};
 
         VkWriteDescriptorSet descriptors[1];
         descriptors[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -991,7 +992,6 @@ int main(int argc, char const* argv[]) {
     VK_CHECK(vkDeviceWaitIdle(device));
     DestroyBuffer(vb, device);
     DestroyBuffer(ib, device);
-    ;
     vkDestroyCommandPool(device, commandPool, nullptr);
     DestroySwapchain(device, swapchain);
     vkDestroyPipeline(device, trianglePipeline, nullptr);
@@ -1002,6 +1002,7 @@ int main(int argc, char const* argv[]) {
     vkDestroySemaphore(device, releaseSemaphore, nullptr);
     vkDestroySemaphore(device, acquireSemaphore, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
+    vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
     glfwDestroyWindow(win);
     vkDestroyDevice(device, nullptr);
     VK_EXT(instance, DestroyDebugReportCallbackEXT);

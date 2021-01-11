@@ -8,7 +8,7 @@ struct Vertex {
   float tu, tv;
 };
 
-layout(binding = 0) readonly buffer Vertices
+layout(binding = 0) /*readonly*/ buffer Vertices
 {
   Vertex vertices[];
 };
