@@ -764,7 +764,7 @@ int main(int argc, char const* argv[]) {
     assert(glfwVulkanSupported() == GLFW_TRUE);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     // VK_CHECK(volkInitialize());
-    GLFWwindow* win = glfwCreateWindow(1024, 768, "niagara", nullptr, nullptr);
+    GLFWwindow* win = glfwCreateWindow(1024, 768, "vulkan", nullptr, nullptr);
     assert(win);
 
     VkInstance instance = CreateInstance();
